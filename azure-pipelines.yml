@@ -53,7 +53,7 @@ jobs:
     dependsOn: FailNow
     condition: failed()
     steps:
-      - pwsh: |
+      - powershell: |
           az boards work-item create `
             --title "Build $(build.buildNumber) failed" `
             --type bug `

@@ -56,7 +56,7 @@ jobs:
       - powershell: |
           az boards work-item create `
             --title "Build $(build.buildNumber) failed" `
-            --type bug `
+            --type Issue `
             --org $(System.TeamFoundationCollectionUri) `
             --project $(System.TeamProject)
         env:

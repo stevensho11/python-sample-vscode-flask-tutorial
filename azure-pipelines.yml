@@ -53,11 +53,11 @@ jobs:
     dependsOn: FailNow
     condition: failed()
     steps:
-      - bash: |
-          az boards work-item create \
-            --title "Build $(build.buildNumber) failed" \
-            --type bug \
-            --org $(System.TeamFoundationCollectionUri) \
+      - pwsh: |
+          az boards work-item create `
+            --title "Build $(build.buildNumber) failed" `
+            --type bug `
+            --org $(System.TeamFoundationCollectionUri) `
             --project $(System.TeamProject)
         env:
           AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)

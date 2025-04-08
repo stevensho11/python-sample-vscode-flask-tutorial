@@ -1,64 +1,107 @@
-# Python package
-# Create and test a Python package on multiple Python versions.
-# Add steps that analyze code, save the dist with the build record, publish to a PyPI-compatible index, and more:
-# https://docs.microsoft.com/azure/devops/pipelines/languages/python
-
-parameters:
-  - name: succeed
-    displayName: Succeed or fail
-    type: boolean
-    default: false
-
 trigger:
   - main
-  - releases/*
-pr:
-  - main
-  - releases/*
 
 pool:
-  name: local
+  vmImage: "ubuntu-latest"
 
-jobs:
-  - job: Test
-    strategy:
-      matrix:
-        Python38:
-          python.version: "3.8"
-        Python39:
-          python.version: "3.9"
-    steps:
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: "$(python.version)"
-        displayName: "Use Python $(python.version)"
+stages:
+  - stage: Build
+    displayName: "Build Stage"
+    jobs:
+      - job: BuildJob
+        displayName: "Build Job"
+        steps:
+          - script: |
+              echo "Restoring project dependencies..."
+            displayName: "Restore dependencies"
+          - script: |
+              echo "Running unit tests..."
+            displayName: "Run unit tests"
 
-      - script: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-        displayName: "Install dependencies"
+  - stage: Test
+    displayName: "Test Stage"
+    dependsOn: Build
+    isSkippable: false
+    jobs:
+      - job: TestJob
+        displayName: "Test Job"
+        steps:
+          - script: |
+              echo "Running unit tests..."
+            displayName: "Run unit tests"
 
-      - script: |
-          pip install pytest pytest-azurepipelines
-          pytest
-        displayName: "pytest"
-
-  - job: FailNow
+  - stage: DeployToStaging
+    displayName: "Deploy to Staging"
     dependsOn: Test
-    steps:
-      - script: git clone malformed input
-        condition: eq(${{ parameters.succeed }}, false)
+    jobs:
+      - job: DeployStagingJob
+        displayName: "Deploy to Staging Job"
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - script: |
+              echo "Build staging job..."
+            displayName: "Build and deploy to staging"
 
-  - job: ErrorHandler
-    dependsOn: FailNow
-    condition: failed()
-    steps:
-      - powershell: |
-          az boards work-item create `
-            --title "Build $(build.buildNumber) failed" `
-            --type Issue `
-            --org $(System.TeamFoundationCollectionUri) `
-            --project $(System.TeamProject)
-        env:
-          AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
-        displayName: "Create work item on failure"
+      - job: DeployStagingJobWithValidation
+        pool: server
+        timeoutInMinutes: 4320 # job times out in 3 days
+        displayName: "Deploy to Staging Job"
+        steps:
+          - task: ManualValidation@1
+            timeoutInMinutes: 1440 # task times out in 1 day
+            inputs:
+              notifyUsers: stevensh378@gmail.com
+              instructions: "Please validate the stage configuration and resume"
+              onTimeout: "resume"
+
+  - stage: DeployToProduction
+    displayName: "Deploy to Production"
+    dependsOn: DeployToStaging
+    lockBehavior: sequential
+    condition: and(succeeded(), in(variables['Build.SourceBranch'], 'refs/heads/main', 'refs/heads/release'))
+    jobs:
+      - job: DeployProductionJob
+        displayName: "Deploy to Production Job"
+        steps:
+          - script: |
+              echo "Deploying to production..."
+              # Add your deployment commands here
+            displayName: "Run deployment commands"
+
+      - job: waitForValidation
+        displayName: Wait for external validation
+        pool: server
+        timeoutInMinutes: 4320 # job times out in 3 days
+        steps:
+          - task: ManualValidation@1
+            timeoutInMinutes: 1440 # task times out in 1 day
+            inputs:
+              notifyUsers: stevensh378@gmail.com
+              instructions: "Please validate the build configuration and resume"
+              onTimeout: "resume"
+
+  - stage: DeployToAlternateProduction
+    displayName: "Deploy to Alternate Production"
+    condition: succeeded()
+    trigger: manual
+    jobs:
+      - job: DeployAlternateProductionJob
+        displayName: "Deploy to Alternate Production Job"
+        steps:
+          - script: |
+              echo "Deploying to alternate production..."
+              # Add your deployment commands here
+            displayName: "Run deployment commands"
+
+  - stage: Rollback
+    displayName: "Rollback Stage"
+    trigger: manual
+    jobs:
+      - job: RollbackJob
+        displayName: "Rollback Job"
+        steps:
+          - script: |
+              echo "Rolling back the deployment..."
+              # Add your rollback commands here
+            displayName: "Run rollback commands"
